@@ -35,9 +35,23 @@ This dashboard visualizes various aspects of the UK tax system, including:
 
 ## Usage
 
-Run the dashboard:
+Run the full dashboard:
 ```
 streamlit run app.py
+```
+
+Run the simplified dashboard (tax bands only):
+```
+streamlit run app2.py
+```
+
+Or use the convenience script:
+```
+# For full dashboard
+./run.sh
+
+# For simplified dashboard
+./run.sh simple
 ```
 
 Navigate to http://localhost:8501 in your web browser to view the dashboard.
@@ -55,9 +69,26 @@ The dashboard provides multiple views accessible from the sidebar:
 7. **Tax Gini coefficient**: Inequality measures for tax burden
 8. **Tax bands**: Distribution of tax bands across UK countries
 
+## Project Structure
+
+```
+uk-tax-dashboard/
+├── app.py                # Main Streamlit app with full dashboard
+├── app2.py               # Simplified Streamlit app (tax bands only)
+├── utils.py              # Utility functions
+├── data_loader.py        # Data loading functions
+├── requirements.txt      # Project dependencies
+├── run.sh                # Convenience script to run either dashboard
+├── setup.sh              # Setup script for deployment
+├── Procfile              # Heroku deployment configuration
+├── assets/               # Static assets
+│   └── styles.css        # Custom CSS styles
+└── data/                 # Data directory (for custom data files)
+```
+
 ## License
 
-[Insert license information here]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgements
 
