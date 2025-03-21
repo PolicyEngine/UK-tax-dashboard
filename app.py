@@ -2,44 +2,22 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.figure_factory as ff
-from policyengine import Simulation
-from policyengine_uk import Microsimulation
 import plotly.express as px
+from utils import COLOR_SCHEME, PLOT_LAYOUT, gini, create_income_groups, load_css
+from data_loader import load_baseline_data, load_country_tax_band_data
 
-# Define a consistent color scheme for all plots
-COLOR_SCHEME = {
-    'primary': '#1f77b4',
-    'secondary': '#ff7f0e',
-    'tertiary': '#2ca02c',
-    'quaternary': '#d62728',
-    'quinary': '#9467bd',
-    'senary': '#8c564b',
-    'septenary': '#e377c2',
-    'octonary': '#7f7f7f',
-    'nonary': '#bcbd22',
-    'denary': '#17becf'
-}
+# Load custom CSS
+load_css()
 
-# Define consistent layout settings
-PLOT_LAYOUT = {
-    'template': 'plotly_white',
-    'height': 500,
-    'margin': {'l': 50, 'r': 50, 't': 50, 'b': 100},
-    'legend': {
-        'orientation': 'h',
-        'yanchor': 'top',
-        'y': -0.25,
-        'xanchor': 'center',
-        'x': 0.5
-    },
-    'title': "",
-}
-
-st.set_page_config(layout="wide")
-
+# Set up page configuration
+st.set_page_config(
+    page_title="UK Tax Dashboard",
+    page_icon="📊",
+    layout="wide"
+)
 
 # Create a sidebar with tabs
-st.sidebar.title("UK tax dashboard")
+st.sidebar.title("UK Tax Dashboard")
 # st.sidebar.markdown("Select a view to explore UK tax data:")
 
 # Define tab options
@@ -57,62 +35,8 @@ tabs = [
 # Create the tab selection
 selected_tab = st.sidebar.radio("", tabs)
 
-# Load and prepare data
-baseline = Microsimulation(dataset="hf://policyengine/policyengine-uk-data/enhanced_frs_2022_23.h5")
-
-df = baseline.calculate_dataframe(
-    [
-        "household_id",
-        "household_weight",
-        "household_tax",
-        "household_market_income",
-        "consumption",
-        "earned_income_tax",
-        "savings_income_tax",
-        "dividend_income_tax",
-        "capital_gains_tax",
-        "council_tax",
-        "working_tax_credit",
-        "child_tax_credit",
-        "tax_free_childcare",
-        "taxed_savings_income",
-        "taxed_income",
-        "business_rates",
-        "marginal_tax_rate",
-    ],
-    period=2025,
-)
-df["etr"] = df.household_tax / df.household_market_income
-
-df = df[
-    df.household_market_income.between(0, 200_000)
-    & df.etr.between(0, 1)
-]
-
-df.sample(100, weights=df.household_weight)
-
-# Calculate derived fields
-df["direct_taxes"] = df.earned_income_tax + df.savings_income_tax + df.dividend_income_tax + df.capital_gains_tax
-df["indirect_taxes"] = df.household_tax - df.direct_taxes  
-df["direct_tax_share"] = df["direct_taxes"] / df["household_tax"]
-df["indirect_tax_share"] = df["indirect_taxes"] / df["household_tax"]
-df["earned_income_tax_share"] = df["earned_income_tax"] / df["household_tax"]
-df["savings_income_tax_share"] = df["savings_income_tax"] / df["household_tax"]
-df["dividend_income_tax_share"] = df["dividend_income_tax"] / df["household_tax"]
-df["capital_gains_tax_share"] = df["capital_gains_tax"] / df["household_tax"]
-df["other_taxes_share"] = (df["household_tax"] - df["earned_income_tax"] - df["savings_income_tax"] - 
-                          df["dividend_income_tax"] - df["capital_gains_tax"]) / df["household_tax"]
-df["council_tax_burden"] = df.council_tax / df.household_market_income
-df["total_tax_credits"] = df.working_tax_credit + df.child_tax_credit + df.tax_free_childcare
-df["business_tax_ratio"] = df.business_rates / df.household_tax
-df["other_taxes"] = df["household_tax"] - df["earned_income_tax"] - df["savings_income_tax"] - \
-                    df["dividend_income_tax"] - df["capital_gains_tax"]
-
-# Function to compute Gini coefficient
-def gini(array):
-    array = np.sort(array)  # Sort values
-    index = np.arange(1, array.shape[0] + 1)  # Rank index
-    return (np.sum((2 * index - array.shape[0] - 1) * array)) / (array.shape[0] * np.sum(array))
+# Load data
+df = load_baseline_data()
 
 # Display the selected tab content
 if selected_tab == "Introduction":
@@ -186,16 +110,15 @@ elif selected_tab == "Effective tax rate":
         st.subheader("Effective tax rate by income decile")
         st.write("This visualization shows the distribution of tax rates within each income group. Box plots display the median, quartiles and variability of tax rates across income levels.")
         
-        df_copy = df.copy()
-        df_copy["income_decile"] = pd.qcut(df_copy.household_market_income, q=10, labels=range(1, 11))
+        df_deciles = create_income_groups(df, "household_market_income", 10, range(1, 11))
         
         fig = px.box(
-            df_copy,
-            x="income_decile",
+            df_deciles,
+            x="household_market_income_group",
             y="etr",
             color_discrete_sequence=[COLOR_SCHEME['primary']],
             labels={
-                "income_decile": "Income decile",
+                "household_market_income_group": "Income decile",
                 "etr": "Effective tax rate"
             }
         )
@@ -211,12 +134,12 @@ elif selected_tab == "Tax composition":
     # Create tabs within the main content area
     tax_comp_tabs = st.tabs(["Proportion of total tax", "Average tax amounts"])
     
-    # Create income groups (deciles) - used by both tabs
-    df['income_group'] = pd.qcut(
-        df['household_market_income'], 
+    # Create income groups (deciles)
+    df = create_income_groups(
+        df, 
+        "household_market_income", 
         10,
-        labels=['P10', 'P20', 'P30', 'P40', 'P50', 'P60', 'P70', 'P80', 'P90', 'P100'],
-        duplicates='drop'
+        ['P10', 'P20', 'P30', 'P40', 'P50', 'P60', 'P70', 'P80', 'P90', 'P100']
     )
     
     with tax_comp_tabs[0]:
@@ -232,12 +155,12 @@ elif selected_tab == "Tax composition":
             'other_taxes_share'
         ]
         
-        grouped = df.groupby('income_group')[tax_shares].mean().reset_index()
+        grouped = df.groupby('household_market_income_group')[tax_shares].mean().reset_index()
         
         # Reshape data for stacked bar chart
         plot_data = pd.melt(
             grouped, 
-            id_vars=['income_group'], 
+            id_vars=['household_market_income_group'], 
             value_vars=tax_shares,
             var_name='tax_component', 
             value_name='proportion'
@@ -249,11 +172,11 @@ elif selected_tab == "Tax composition":
         # Create the stacked bar chart
         fig = px.bar(
             plot_data,
-            x='income_group',
+            x='household_market_income_group',
             y='proportion',
             color='tax_component',
             labels={
-                'income_group': 'Income group (P10=Poorest, P100=Richest)',
+                'household_market_income_group': 'Income group (P10=Poorest, P100=Richest)',
                 'proportion': 'Proportion of total tax',
                 'tax_component': 'Tax component'
             },
@@ -293,12 +216,12 @@ elif selected_tab == "Tax composition":
         ]
         
         # Group by income group and calculate MEAN tax per household (not sum)
-        grouped = df.groupby('income_group')[tax_components].mean().reset_index()
+        grouped = df.groupby('household_market_income_group')[tax_components].mean().reset_index()
         
         # Reshape data for stacked bar chart
         plot_data = pd.melt(
             grouped, 
-            id_vars=['income_group'], 
+            id_vars=['household_market_income_group'], 
             value_vars=tax_components,
             var_name='tax_component', 
             value_name='tax_amount'
@@ -310,11 +233,11 @@ elif selected_tab == "Tax composition":
         # Create the stacked bar chart
         fig = px.bar(
             plot_data,
-            x='income_group',
+            x='household_market_income_group',
             y='tax_amount',
             color='tax_component',
             labels={
-                'income_group': 'Income group (P10=Poorest, P100=Richest)',
+                'household_market_income_group': 'Income group (P10=Poorest, P100=Richest)',
                 'tax_amount': 'Average tax per household (£)',
                 'tax_component': 'Tax component'
             },
@@ -365,20 +288,20 @@ elif selected_tab == "Tax credits distribution":
     st.write("This chart shows how tax credits are distributed across different income groups. Lower income households typically receive more tax credits as a form of income support.")
     
     # Create income deciles
-    df['income_decile'] = pd.qcut(
-        df['household_market_income'], 
+    df_deciles = create_income_groups(
+        df, 
+        "household_market_income", 
         10, 
-        labels=['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10'],
-        duplicates='drop'
+        ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'D9', 'D10']
     )
     
     # Create box plot without individual points, showing standard deviation and mean
     fig = px.box(
-        df,
-        x="income_decile",
+        df_deciles,
+        x="household_market_income_group",
         y="total_tax_credits",
         labels={
-            'income_decile': 'Income decile (D1=Poorest, D10=Richest)',
+            'household_market_income_group': 'Income decile (D1=Poorest, D10=Richest)',
             'total_tax_credits': 'Total tax credits (£)'
         },
         points=False,  # Hide individual data points
@@ -443,10 +366,10 @@ elif selected_tab == "Tax gini coefficient":
     df_copy = df[df.etr.notna()].copy()
     
     # Assign income deciles
-    df_copy["income_decile"] = pd.qcut(df_copy.household_market_income, q=10, labels=range(1, 11))
+    df_copy = create_income_groups(df_copy, "household_market_income", 10, range(1, 11))
     
     # Compute Gini coefficient within each decile
-    gini_by_decile = df_copy.groupby("income_decile")["etr"].apply(gini).reset_index()
+    gini_by_decile = df_copy.groupby("household_market_income_group")["etr"].apply(gini).reset_index()
     gini_by_decile.columns = ["income_decile", "tax_gini"]
     
     # Plot Tax Gini across income deciles
@@ -468,24 +391,8 @@ elif selected_tab == "Tax bands":
     st.header("Tax band distribution by country")
     st.write("This chart compares tax band distribution across the different countries of the UK. It shows the proportion of taxpayers in each tax band for England, Scotland, Wales, and Northern Ireland.")
     
-    # Initialize the simulation
-    sim = Simulation({
-        "country": "uk",
-        "scope": "macro",
-    })
-
-    # Extract data
-    df_tax_distribution = sim.baseline_simulation.calculate_dataframe(
-        [
-            "person_id",
-            "household_weight",
-            "household_tax",
-            "household_market_income",
-            "tax_band",
-            "country",
-        ],
-        period=2025,
-    )
+    # Load tax band data
+    df_tax_distribution = load_country_tax_band_data()
 
     # Group by country and tax band, summing person counts
     tax_distribution = df_tax_distribution.groupby(["country", "tax_band"], as_index=False)["person_id"].count()
@@ -531,3 +438,14 @@ elif selected_tab == "Tax bands":
     fig.update_layout(**layout)
 
     st.plotly_chart(fig, use_container_width=True)
+
+# Add footer with attribution
+st.markdown("---")
+st.markdown(
+    """<div style="text-align: center; color: gray; font-size: 0.8em;">
+    Built with <a href="https://policyengine.org" target="_blank">PolicyEngine</a> | 
+    Data source: FRS 2022-23 | 
+    Dashboard created by Janan Sadeqian
+    </div>""", 
+    unsafe_allow_html=True
+)

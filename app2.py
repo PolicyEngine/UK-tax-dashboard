@@ -2,28 +2,20 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.express as px
-from policyengine import Simulation
+from utils import COLOR_SCHEME, PLOT_LAYOUT
+from data_loader import load_country_tax_band_data
 
-st.title("UK Taxes")
-
-# Initialize the simulation
-sim = Simulation({
-    "country": "uk",
-    "scope": "macro",
-})
-
-# Extract data
-df = sim.baseline_simulation.calculate_dataframe(
-    [
-        "person_id",
-        "household_weight",
-        "household_tax",
-        "household_market_income",
-        "tax_band",
-        "country",
-    ],
-    period=2025,
+# Set up page configuration
+st.set_page_config(
+    page_title="UK Tax Band Distribution",
+    page_icon="📊",
+    layout="wide"
 )
+
+st.title("UK Tax Band Distribution")
+
+# Load tax band data
+df = load_country_tax_band_data()
 
 # Group by country and tax band, summing person counts
 tax_distribution = df.groupby(["country", "tax_band"], as_index=False)["person_id"].count()
@@ -53,7 +45,6 @@ fig = px.bar(
     x="country",
     y="percentage",
     color="tax_band",
-    title="Tax band distribution by country (Percentage)",
     labels={
         "country": "Country", 
         "percentage": "Percentage", 
@@ -63,11 +54,24 @@ fig = px.bar(
 )
 
 # Update layout to show percentages
-fig.update_layout(
-    yaxis_title="Percentage (%)",
-    yaxis=dict(ticksuffix="%"),
-    bargap=0.2
+layout = PLOT_LAYOUT.copy()
+layout.update({
+    'yaxis_title': "Percentage (%)",
+    'title': "",
+    'yaxis': {'ticksuffix': "%"},
+    'bargap': 0.2
+})
+fig.update_layout(**layout)
+
+st.plotly_chart(fig, use_container_width=True)
+
+# Add footer with attribution
+st.markdown("---")
+st.markdown(
+    """<div style="text-align: center; color: gray; font-size: 0.8em;">
+    Built with <a href="https://policyengine.org" target="_blank">PolicyEngine</a> | 
+    Data source: FRS 2022-23 | 
+    Dashboard created by Janan Sadeqian
+    </div>""", 
+    unsafe_allow_html=True
 )
-
-st.plotly_chart(fig)
-
